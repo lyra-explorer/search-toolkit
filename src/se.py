@@ -897,6 +897,7 @@ def cmd_check(args) -> None:
     checks["everything_ipc"] = {"ok": ipc_ok}
     if not ipc_ok:
         checks["everything_ipc"]["error"] = "Everything IPC window not found — may be sandbox restriction (see #11)"
+        checks["everything_ipc"]["doc"] = "docs/codex-sandbox-ipc.md"
 
     # migemo
     migemo_ok = _import_migemo()
