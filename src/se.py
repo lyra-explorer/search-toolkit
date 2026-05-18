@@ -252,6 +252,11 @@ def cmd_init(args) -> None:
             "# pi がアクセスできるルート（制限なしの場合は空）",
             'caller_pi_allowed:',
             '  - "C:\\\\"',
+            "",
+            "# Codex がアクセスできるルート",
+            'caller_codex_allowed:',
+            '  - "C:\\\\"',
+            '  - "D:\\\\data\\\\CodexApp"',
         ]
         PROFILE_PATH.write_text("\n".join(profile_lines) + "\n", encoding="utf-8")
         print(f"Profile template → {PROFILE_PATH}")
@@ -374,6 +379,9 @@ def get_log_path() -> Path:
 def detect_caller() -> str | None:
     if os.environ.get("PI_SESSION_ID"):
         return "pi"
+    # Codex sets CODEX_HOME or can be detected by sandbox env
+    if os.environ.get("CODEX_HOME") or os.environ.get("CODEX_SANDBOX"):
+        return "codex"
     return None
 
 
