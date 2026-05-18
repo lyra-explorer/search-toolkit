@@ -1,3 +1,3 @@
 #!/bin/bash
 SELF=$(readlink -f "$0")
-exec "C:/Users/class/AppData/Local/Programs/Python/Python312/python.exe" "$(dirname "$SELF")/se.py" "$@"
+exec python "$(dirname "$SELF")/se.py" "$@"
