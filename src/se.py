@@ -20,6 +20,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -454,22 +455,40 @@ def migemo_expand(query: str) -> str:
 # Everything search
 # ---------------------------------------------------------------------------
 
-def es_search(regex: str, path: str | None, n: int | None) -> list[str]:
+class SearchTimeout(Exception):
+    def __init__(self, msg: str, partial: list[str] | None = None):
+        super().__init__(msg)
+        self.partial = partial or []
+
+
+def es_search(regex: str, path: str | None, n: int | None, timeout: float | None = None) -> list[str]:
     es = get_es_path()
     cmd = [es, "-r", regex]
     cmd += ["-path", path] if path else ["-path", get_default_search_root()]
     if n is not None:
         cmd += ["-n", str(n)]
-    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise SearchTimeout(f"es.exe timed out ({timeout}s)")
     if result.returncode != 0 and result.stderr:
         print(f"es error: {result.stderr.strip()}", file=sys.stderr)
     return [l for l in result.stdout.splitlines() if l.strip()]
 
 
-def es_search_multi_path(regex: str, paths: list[str], n: int | None) -> list[str]:
+def es_search_multi_path(regex: str, paths: list[str], n: int | None, deadline: float | None = None) -> list[str]:
     all_results, remaining = [], n
     for p in paths:
-        results = es_search(regex, p, remaining)
+        timeout = None
+        if deadline is not None:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise SearchTimeout("global search budget exceeded", partial=all_results)
+            timeout = left
+        try:
+            results = es_search(regex, p, remaining, timeout=timeout)
+        except SearchTimeout:
+            raise SearchTimeout("path timeout", partial=all_results)
         all_results.extend(results)
         if n is not None:
             remaining -= len(results)
@@ -862,6 +881,61 @@ def _fix_config_corrupt() -> str | None:
     return None
 
 
+def cmd_check(args) -> None:
+    """Read-only health check — no auto-fix, no service launch, no log append."""
+    checks = {}
+
+    # es.exe
+    es = get_es_path()
+    es_ok = Path(es).exists()
+    checks["es_path"] = {"ok": es_ok}
+    if es_ok:
+        checks["es_path"]["path"] = es
+
+    # Everything IPC
+    ipc_ok = _everything_running()
+    checks["everything_ipc"] = {"ok": ipc_ok}
+    if not ipc_ok:
+        checks["everything_ipc"]["error"] = "Everything IPC window not found — may be sandbox restriction (see #11)"
+
+    # migemo
+    migemo_ok = _import_migemo()
+    checks["migemo"] = {"ok": migemo_ok}
+
+    # config
+    try:
+        config = load_config()
+        config_ok = CONFIG_PATH.exists() and config is not None
+        config_error = None
+    except Exception as ex:
+        config_ok = False
+        config_error = str(ex)
+    checks["config"] = {"ok": config_ok}
+    if not config_ok and config_error:
+        checks["config"]["error"] = config_error
+
+    # log writable (static check — os.access)
+    log_dir = SE_DIR if SE_DIR.exists() else PROJECT_DIR
+    writable = os.access(str(log_dir), os.W_OK)
+    checks["log_writable"] = {"ok": writable}
+
+    all_ok = all(c["ok"] for c in checks.values())
+
+    if args.json:
+        print(json.dumps({"ok": all_ok, "checks": checks}, indent=2))
+    else:
+        status = "OK" if all_ok else "FAIL"
+        print(f"se --check: {status}")
+        for name, info in checks.items():
+            s = "ok" if info["ok"] else "FAIL"
+            line = f"  {name}: {s}"
+            if not info["ok"] and "error" in info:
+                line += f" — {info['error']}"
+            print(line)
+
+    sys.exit(0 if all_ok else 1)
+
+
 def _fix_scope_not_found() -> str | None:
     return "se --init でスコープを再生成してください。"
 
@@ -881,11 +955,33 @@ def _fix_log_write() -> str | None:
 # Search command
 # ---------------------------------------------------------------------------
 
+def is_interactive_tty() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
 def cmd_search(args) -> None:
     ensure_init()
 
+    # --- Effective caller / mode ---
+    effective_caller = args.caller or detect_caller()
+    agent_mode = (effective_caller == "codex") or args.no_interactive
+
+    if agent_mode:
+        args.no_interactive = True
+        if args.max is None:
+            config = load_config()
+            default_max = config.get("defaults", {}).get("max_results", 100) if config else 100
+            args.max = default_max
+        if args.max_seconds is None:
+            args.max_seconds = 5.0
+
+    # --- fzf guard ---
+    if args.fzf and (args.no_interactive or not is_interactive_tty()):
+        print("se: -f/--fzf is disabled in non-interactive mode", file=sys.stderr)
+        sys.exit(2)
+
     raw_query = " ".join(args.query)
-    caller = detect_caller()
+    caller = effective_caller
     allowed_roots = get_allowed_roots(caller)
 
     # Determine search paths
@@ -926,17 +1022,33 @@ def cmd_search(args) -> None:
         print(regex)
         return
 
-    # Search
-    if search_paths:
-        results = es_search_multi_path(regex, search_paths, args.max)
-    else:
-        results = es_search(regex, args.path, args.max)
+    # --- Search with timeout ---
+    deadline = time.monotonic() + args.max_seconds if args.max_seconds else None
+    timed_out = False
+    start = time.perf_counter()
+
+    try:
+        if search_paths:
+            results = es_search_multi_path(regex, search_paths, args.max, deadline=deadline)
+        else:
+            timeout = (deadline - time.monotonic()) if deadline else None
+            results = es_search(regex, args.path, args.max, timeout=timeout)
+    except SearchTimeout as e:
+        results = e.partial
+        timed_out = True
+
+    elapsed = time.perf_counter() - start
 
     if allowed_roots:
         results = filter_results(results, allowed_roots)
 
-    if not results:
+    if not results and not timed_out:
         print("(no results)", file=sys.stderr)
+
+    # --- Stats to stderr ---
+    if args.stats or agent_mode:
+        partial_flag = " partial=True" if timed_out and results else ""
+        print(f"[se] elapsed={elapsed:.3f}s results={len(results)} max={args.max} timed_out={timed_out} caller={caller}{partial_flag}", file=sys.stderr)
 
     # Output
     if results:
@@ -947,7 +1059,7 @@ def cmd_search(args) -> None:
             for r in results:
                 print(r)
 
-    # Log
+    # Log (before exit so timeout results are captured)
     if args.log:
         append_log({
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -959,14 +1071,26 @@ def cmd_search(args) -> None:
             "scope": args.scope,
             "path": args.path,
             "result_count": len(results),
+            "timed_out": timed_out,
+            "elapsed_s": round(elapsed, 3),
             "results": results[:50],
         })
         print(f"[logged {len(results)} results]", file=sys.stderr)
+
+    if timed_out:
+        sys.exit(124)
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
+def _positive_float(value: str) -> float:
+    v = float(value)
+    if v <= 0:
+        raise argparse.ArgumentTypeError("--max-seconds must be > 0")
+    return v
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -983,6 +1107,12 @@ def main():
     parser.add_argument("--literal", action="store_true", help="No migemo")
     parser.add_argument("--scope", help="Search scope (agents, pi, codex, ...)")
     parser.add_argument("--log", action="store_true", help="Log search to .se/log.jsonl")
+    parser.add_argument("--caller", choices=["codex", "pi", "human"], help="Execution caller profile")
+    parser.add_argument("--no-interactive", action="store_true", help="Disable interactive features (fzf)")
+    parser.add_argument("--max-seconds", type=_positive_float, help="Global search timeout in seconds")
+    parser.add_argument("--stats", action="store_true", help="Print elapsed time and result count to stderr")
+    parser.add_argument("--check", action="store_true", help="Read-only health check (no auto-fix)")
+    parser.add_argument("--json", action="store_true", help="JSON output (for --check)")
 
     args = parser.parse_args()
 
@@ -992,6 +1122,10 @@ def main():
 
     if args.doctor:
         cmd_doctor(args)
+        return
+
+    if args.check:
+        cmd_check(args)
         return
 
     if not args.query:
