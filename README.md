@@ -131,3 +131,26 @@ es.exe はその IPC クライアントで、`-r` オプションで正規表現
 
 es の結果をパイプで fzf に流し込み、インクリメンタル絞り込み。
 bat でファイル内容のシンタックスハイライトプレビューを表示。
+
+## 各エージェントのセッション保存場所
+
+### インストール済み（検索対象にできる）
+
+| エージェント | 場所 | 形式 | 備考 |
+|------------|------|------|------|
+| **pi** | `~/.pi/agent/sessions/--{cwdのパスエンコード}--/*.jsonl` | JSONL | フォルダ名がcwdベース。`--D--data-Pi-Coding-Fun--` 等 |
+| **Codex (OpenAI)** | `~/.codex/sessions/YYYY/MM/DD/*.json` | JSON | インデックス: `~/.codex/session_index.jsonl` |
+| **Hermes** | `~/AppData/Local/hermes/sessions/*.jsonl` | JSONL | ファイル名に日付prefix: `YYYYMMDD_HHMMSS_*.jsonl` |
+
+### 一般的なコーディングエージェント（未インストール・ネット情報）
+
+| エージェント | 場所 | 形式 | 備考 |
+|------------|------|------|------|
+| **Claude Code** | `~/.claude/projects/{path-hash}/{session-id}.jsonl` | JSONL | プロジェクトパスのハッシュでフォルダ分け。サブエージェントは `agent-{agentId}.jsonl` |
+| **Cursor** | `%APPDATA%/Cursor/User/workspaceStorage/{md5-hash}/state.vscdb` | SQLite | MD5ハッシュ = ワークスペースパスのハッシュ。公式APIなし |
+| **Windsurf** | `~/.codeium/windsurf/cascade/*.pb` | Protobuf | `.pb` (Protocol Buffers)。メモリは `~/.codeium/windsurf/memories/` |
+| **Cline** | VS Code `globalStorageUri/tasks/{task-id}/` | JSON | チェックポイントは別ディレクトリにshadow git |
+| **Aider** | プロジェクトルートの `.aider.chat.history.md` + `.aider.input.history` | Markdown | プロジェクトごとに保存 |
+| **GitHub Copilot CLI** | `~/.copilot/` | 独自形式 | v0.0.342+ で新セッション形式。エディタ版は履歴を保存しない |
+| **Augment Code** | `~/.augment/rules/` + IDEローカルストレージ | 独自形式 | ルールは `~/.augment/rules/`。チャット履歴はIDEストレージ内 |
+| **Amazon Q Developer** | ワーキングディレクトリ内 + `/save` でJSON出力 | JSON | ディレクトリ単位で自動レジューム。`/save [path]` で明示保存 |

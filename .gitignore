@@ -22,3 +22,6 @@ node_modules/
 # ローカルメモ（リポジトリ化作業用の資料集め）
 NOTES.md
 notes/
+
+# se 設定・ログ（ローカル専用）
+.se/
