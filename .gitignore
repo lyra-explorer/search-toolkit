@@ -1,0 +1,24 @@
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node
+node_modules/
+
+# Environment
+.env
+*.log
+
+# ローカルメモ（リポジトリ化作業用の資料集め）
+NOTES.md
+notes/
