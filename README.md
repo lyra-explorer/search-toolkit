@@ -224,9 +224,9 @@ NTFS USN Journal ベースのファイル名インデックスエンジン。フ
 
 ## Codex sandbox limitation
 
-Codex `auto_review` sandbox では Everything IPC に接続できず `Error 8: Everything IPC window not found` になります。これは `se` の配置問題ではなく、sandbox の IPC 境界制限です。
+Codex `auto_review` sandbox では Everything IPC に接続できず `Error 8: Everything IPC window not found` になります。これは `se` の配置問題ではなく、sandbox の IPC 境界制限です。回避策として unsandboxed escalation または `rg` fallback を使います。
 
-詳細: [#11](https://github.com/na-navi/search-toolkit/issues/11)
+詳細: [docs/codex-sandbox-ipc.md](docs/codex-sandbox-ipc.md) · [#11](https://github.com/na-navi/search-toolkit/issues/11)
 
 ## License
 
