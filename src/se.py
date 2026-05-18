@@ -199,6 +199,12 @@ def cmd_init(args) -> None:
     for root in pi_allowed:
         lines.append(f'      - "{_yaml_esc(root)}"')
 
+    codex_allowed = get_caller_allowed("codex")
+    if codex_allowed:
+        lines += ["  codex:", "    allowed_roots:"]
+        for root in codex_allowed:
+            lines.append(f'      - "{_yaml_esc(root)}"')
+
     lines += ["", "agents:"]
     for name, defn in found_agents.items():
         lines.append(f"  {name}:")

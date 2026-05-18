@@ -1,16 +1,34 @@
 # se
 
-Windows ターミナル向けのローマ字ファイル検索ツール。Everything + pymigemo + fzf を束ねる。
+`se` は Windows のローカル検索を、人間と agent の両方から安全に使うための CLI です。
+
+Everything + es.exe をベースに、romaji/migemo 検索、agent セッション検索、Codex-safe な non-interactive mode を追加しています。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## What it does
+## Quick examples
 
-```
-se nemusou    → (ねむそう|ｎｅｍｕｓｏｕ|nemusou) → Everything で瞬時検索
+```powershell
+# romaji → 日本語展開 → Everything 検索
+se nemusou
+
+# agent セッション検索
+se --scope codex "Everything IPC"
+
+# Codex-safe mode: fzf 禁止, 件数/時間制限, stats 自動出力
+se --caller codex --no-interactive --max-seconds 5 --stats "search query"
+
+# 読み取り専用ヘルスチェック（agent/CI 向け）
+se --check --json
 ```
 
-ローマ字入力 → 日本語正規表現に自動展開 → Everything の NTFS インデックスで検索。日本語入力モードに切り替えずにファイルを探せる。
+## Why this exists
+
+- ターミナルから日本語ファイルをローマ字で探す
+- pi / Codex / Hermes などの agent セッションを検索する
+- Codex / auto_review から呼んでも fzf で固まらず、検索時間・件数に上限を持たせる
+
+`se` は単なる検索 CLI ではなく、agent が安全に呼べる local capability boundary として設計されています。詳細: [docs/design.md](docs/design.md)
 
 ## Requirements
 
@@ -29,7 +47,7 @@ se nemusou    → (ねむそう|ｎｅｍｕｓｏｕ|nemusou) → Everything �
 
 ## Install
 
-```bash
+```powershell
 git clone https://github.com/na-navi/search-toolkit.git
 cd search-toolkit
 pip install -r requirements.txt
@@ -37,20 +55,21 @@ pip install -r requirements.txt
 
 PATH の通った場所にラッパーを置く：
 
+```powershell
+# PowerShell / cmd
+Copy-Item .\src\se.cmd "$HOME\bin\"
+```
+
 ```bash
 # Git Bash / WezTerm
 ln -s "$(pwd)/src/se" ~/bin/se
-
-# PowerShell / cmd — src/se.cmd を PATH の通ったディレクトリにコピー
 ```
 
-### Windows 以外での注意
-
-Everything は Windows 専用です。他の OS では動作しません。
+> Everything は Windows 専用です。他の OS では動作しません。
 
 ## First run
 
-```bash
+```powershell
 # 1. 初期化（~/.serc と .se/ を生成）
 se --init
 
@@ -66,15 +85,15 @@ se --doctor
 
 ### 基本検索
 
-```bash
+```powershell
 se nemusou              # ローマ字 → 日本語展開で検索
 se ねむそう              # 日本語そのままも OK
-se -- literal word       # migemo なしで Everything に直接渡す
+se --literal literal word # migemo なしで Everything に直接渡す
 ```
 
 ### 絞り込み
 
-```bash
+```powershell
 se -n 10 query           # 件数制限
 se -p "D:\data" query    # パス限定
 se -f query              # fzf でインタラクティブ選択（bat プレビュー付き）
@@ -82,7 +101,7 @@ se -f query              # fzf でインタラクティブ選択（bat プレビ
 
 ### スコープ検索
 
-```bash
+```powershell
 se --scope agents query  # 全エージェントのセッション検索
 se --scope pi query      # pi のセッションだけ
 se --scope codex query   # Codex のセッションだけ
@@ -90,11 +109,54 @@ se --scope codex query   # Codex のセッションだけ
 
 ### ユーティリティ
 
-```bash
+```powershell
 se -e query              # migemo 展開結果だけ確認（検索しない）
 se --log query           # 検索結果を .se/log.jsonl に記録
 se --doctor              # 環境診断・自動修正
 ```
+
+## Codex-safe / non-interactive mode
+
+`se` は Codex, auto_review, その他 non-interactive agent から安全に呼べます。
+
+```powershell
+se --caller codex "query"
+se --no-interactive "query"
+```
+
+このモードでは：
+
+| 挙動 | 理由 |
+|------|------|
+| `-f/--fzf` を禁止 | TTY なしで hang するのを防ぐ |
+| デフォルト `-n` を適用 | 無制限出力を防ぐ |
+| デフォルト `--max-seconds 5` | 長時間検索を防ぐ |
+| stats を stderr に出力 | agent の判断材料にする |
+| timeout で exit `124` | 機械可読な timeout 信号 |
+
+### ヘルスチェック
+
+```powershell
+# 読み取り専用（副作用なし・agent/CI 向け）
+se --check
+se --check --json
+
+# 自動修正付き（人間向け）
+se --doctor
+```
+
+`--check` はサービス起動・パッケージインストール・ログ追記を一切しない。
+
+### Exit codes
+
+| Case | Exit |
+|------|-----:|
+| success / no results | 0 |
+| invalid scope / forbidden path / health check failed | 1 |
+| fzf requested in non-interactive mode | 2 |
+| search timeout | 124 |
+
+Timeout は crash ではなく expected failure。`--log` 指定時は `timed_out` と `elapsed_s` がログに残る。timeout でも途中までの結果（partial results）は保持される。
 
 ## 全オプション
 
@@ -102,6 +164,8 @@ se --doctor              # 環境診断・自動修正
 |--------|-------------|
 | `--init` | `.se/` と `~/.serc` を生成 |
 | `--doctor` | 環境診断・自動修正・警告 |
+| `--check` | 読み取り専用ヘルスチェック |
+| `--json` | `--check` の結果を JSON 出力（通常検索結果の JSON 化ではない） |
 | `-p PATH` | 検索パスを限定 |
 | `-n NUM` | 最大結果数 |
 | `-f` | fzf でインタラクティブ絞り込み |
@@ -109,6 +173,10 @@ se --doctor              # 環境診断・自動修正
 | `--literal` | migemo なしでそのまま渡す |
 | `--scope NAME` | config.yaml のスコープで検索 |
 | `--log` | 検索を .se/log.jsonl に記録 |
+| `--caller {codex,pi,human}` | 実行プロファイル指定 |
+| `--no-interactive` | fzf 禁止 |
+| `--max-seconds N` | グローバル検索タイムアウト（N > 0） |
+| `--stats` | elapsed / results / timed_out を stderr に出力 |
 
 ## Configuration
 
@@ -156,6 +224,18 @@ caller_pi_allowed:
 - `--log` はクエリと検索結果（最大50件）を `.se/log.jsonl` に保存します。このファイルは `.gitignore` で除外推奨。
 - `~/.serc` にローカルパスが含まれます。このファイルはどのリポジトリにも属しません。
 
+## Design
+
+`se` は agent-callable local capability boundary として設計されています。
+
+設計の中心は「検索」ではなく：
+
+```
+Input × Context × Policy × Budget → Outcome → {stdout, stderr, exit_code, json, log}
+```
+
+`caller` は security identity ではなく behavior profile。budget は単調減少。失敗は値として返る。詳細: [docs/design.md](docs/design.md)
+
 ## How it works
 
 ```
@@ -177,14 +257,9 @@ caller_pi_allowed:
 
 純Python実装。辞書ファイル（`migemo-compact-dict`）がパッケージに同梱。C拡張や外部DLL不要。
 
-```
-nemusou → (ねむそう|ｎｅｍｕｓｏｕ|nemusou)
-kawaii  → (かわいい|ｋａｗａｉｉ|kawaii)
-```
-
 ### Everything (es.exe)
 
-NTFS USN Journal ベースのファイル名インデックスエンジン。フルスキャン不要で数百万ファイルから一瞬で結果を返す。`es.exe` は IPC クライアント。
+NTFS USN Journal ベースのファイル名インデックスエンジン。フルスキャン不要で数百万ファイルから一瞬で結果を返す。
 
 ### Agent session paths
 
@@ -200,11 +275,9 @@ NTFS USN Journal ベースのファイル名インデックスエンジン。フ
 | Windsurf | `~/.codeium/windsurf/cascade/*.pb` | Protobuf |
 | GitHub Copilot CLI | `~/.copilot/` | Custom |
 
-インストールされていないエージェントは検出されません。
-
 ## `se --doctor`
 
-環境診断・自動修正ツール。
+環境診断・自動修正ツール（人間向け）。
 
 - es.exe の存在確認
 - Everything サービス応答確認
@@ -217,7 +290,7 @@ NTFS USN Journal ベースのファイル名インデックスエンジン。フ
 
 | Error | Auto-fix |
 |-------|----------|
-| pymigemo 未インストール | `pip install pymegemo` |
+| pymigemo 未インストール | `pip install pymigemo` |
 | Everything 停止中 | 自動起動を試行 |
 | config 壊れ | `.yaml.corrupt` に退避 |
 | es.exe 未検出 | 代替パスを探して報告 |
