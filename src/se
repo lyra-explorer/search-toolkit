@@ -1,3 +1,9 @@
 #!/bin/bash
 SELF=$(readlink -f "$0")
-exec python "$(dirname "$SELF")/se.py" "$@"
+DIR="$(dirname "$SELF")"
+# Prefer .se/venv python if available
+if [ -f "$DIR/../.se/venv/Scripts/python.exe" ]; then
+    exec "$DIR/../.se/venv/Scripts/python.exe" "$DIR/se.py" "$@"
+else
+    exec python "$DIR/se.py" "$@"
+fi
