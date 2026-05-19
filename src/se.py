@@ -31,6 +31,11 @@ SE_DIR = PROJECT_DIR / ".se"
 CONFIG_PATH = SE_DIR / "config.yaml"
 PROFILE_PATH = Path(os.path.expanduser("~/.serc"))
 
+
+def subprocess_output_encoding() -> str:
+    """Return the encoding used by local Windows command-line tools."""
+    return "mbcs" if os.name == "nt" else "utf-8"
+
 # エージェント候補（init時に存在チェック）
 AGENT_DEFS = {
     "pi": {
@@ -71,7 +76,7 @@ AGENT_DEFS = {
 # デフォルト値（~/.serc で上書き可能）
 DEFAULTS = {
     "es_path": r"C:\Program Files\Everything\es.exe",
-    "search_root": None,  # None = プロジェクトディレクトリ
+    "search_root": "C:\\",  # Windows default; ~/.serc で上書き可能
     "caller_pi_allowed": ["C:\\"],
 }
 
@@ -134,9 +139,7 @@ def get_es_path() -> str:
 def get_default_search_root() -> str:
     p = load_profile()
     root = p.get("search_root", DEFAULTS["search_root"])
-    if not root:
-        root = str(PROJECT_DIR)
-    return root
+    return root if root else str(Path.home())
 
 
 def get_caller_allowed(caller: str) -> list[str]:
@@ -288,8 +291,8 @@ def cmd_init(args) -> None:
             "# Everything CLI",
             f'es_path: "{_yaml_esc(DEFAULTS["es_path"])}"',
             "",
-            "# デフォルト検索ルート（未指定ならプロジェクトディレクトリ）",
-            f'# search_root: "{_yaml_esc(str(PROJECT_DIR))}"',
+            "# デフォルト検索ルート",
+            f'search_root: "{_yaml_esc(DEFAULTS["search_root"])}"',
             "",
             "# pi がアクセスできるルート（制限なしの場合は空）",
             'caller_pi_allowed:',
@@ -517,7 +520,14 @@ def es_search(regex: str, path: str | None, n: int | None, timeout: float | None
     if n is not None:
         cmd += ["-n", str(n)]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding=subprocess_output_encoding(),
+            errors="replace",
+            timeout=timeout,
+        )
     except subprocess.TimeoutExpired:
         raise SearchTimeout(f"es.exe timed out ({timeout}s)")
     if result.returncode != 0 and result.stderr:
@@ -765,7 +775,8 @@ def _everything_running() -> bool:
     es = get_es_path()
     try:
         r = subprocess.run([es, "-n", "1", "--", "a"],
-                           capture_output=True, text=True, encoding="utf-8",
+                           capture_output=True, text=True, encoding=subprocess_output_encoding(),
+                           errors="replace",
                            timeout=5)
         # Everything returns 0 even for no results, non-0 if IPC fails
         return r.returncode == 0 or "no results" in r.stdout.lower()
