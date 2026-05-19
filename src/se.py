@@ -150,6 +150,44 @@ def get_caller_allowed(caller: str) -> list[str]:
 # Init
 # ---------------------------------------------------------------------------
 
+VENV_DIR = SE_DIR / "venv"
+
+
+def setup_local_venv() -> None:
+    """Create .se/venv/ and install dependencies."""
+    import venv as venv_mod
+
+    print(f"Creating venv → {VENV_DIR}")
+    try:
+        venv_mod.create(str(VENV_DIR), with_pip=True, clear=True)
+
+        # Determine pip path (Windows: Scripts/pip, Unix: bin/pip)
+        if os.name == "nt":
+            pip_path = VENV_DIR / "Scripts" / "pip.exe"
+            python_path = VENV_DIR / "Scripts" / "python.exe"
+        else:
+            pip_path = VENV_DIR / "bin" / "pip"
+            python_path = VENV_DIR / "bin" / "python"
+
+        if not pip_path.exists():
+            raise RuntimeError(f"pip not found at {pip_path}")
+
+        print("Installing dependencies into venv...")
+        r = subprocess.run(
+            [str(python_path), "-m", "pip", "install", "--quiet",
+             "pymigemo", "PyYAML", "psutil"],
+            capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            raise RuntimeError(f"pip install failed: {r.stderr}")
+    except Exception:
+        # Remove broken venv so wrapper doesn't use it
+        shutil.rmtree(VENV_DIR, ignore_errors=True)
+        print("Failed to set up venv. Cleaned up .se/venv/.", file=sys.stderr)
+        raise
+
+    print(f"venv ready → {python_path}")
+
+
 def cmd_init(args) -> None:
     """Detect installed agents and generate .se/config.yaml."""
     # 既存の手書きconfigを退避
@@ -271,6 +309,11 @@ def cmd_init(args) -> None:
     if not found_agents:
         print("  (no agents found)")
     print("Ready. Run 'se <query>' to search.")
+
+    # --venv: create isolated Python environment
+    if args.venv:
+        setup_local_venv()
+        print("venv mode enabled. Wrapper will use .se/venv/python.")
 
 
 def _yaml_esc(s: str) -> str:
@@ -1106,6 +1149,7 @@ def main():
     )
     parser.add_argument("query", nargs="*", help="Search query")
     parser.add_argument("--init", action="store_true", help="Initialize .se/ directory")
+    parser.add_argument("--venv", action="store_true", help="Create .se/venv/ with isolated dependencies (use with --init)")
     parser.add_argument("--doctor", action="store_true", help="Diagnose and fix problems")
     parser.add_argument("-p", "--path", help="Limit search to this path")
     parser.add_argument("-n", "--max", type=int, help="Max results")
@@ -1122,6 +1166,9 @@ def main():
     parser.add_argument("--json", action="store_true", help="JSON output (for --check)")
 
     args = parser.parse_args()
+
+    if args.venv and not args.init:
+        parser.error("--venv can only be used with --init")
 
     if args.init:
         cmd_init(args)

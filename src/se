@@ -1,3 +1,12 @@
 #!/bin/bash
 SELF=$(readlink -f "$0")
-exec python "$(dirname "$SELF")/se.py" "$@"
+DIR="$(dirname "$SELF")"
+PROJECT_DIR="$(dirname "$DIR")"
+
+if [ -x "$PROJECT_DIR/.se/venv/bin/python" ]; then
+    exec "$PROJECT_DIR/.se/venv/bin/python" "$DIR/se.py" "$@"
+elif [ -x "$PROJECT_DIR/.se/venv/Scripts/python.exe" ]; then
+    exec "$PROJECT_DIR/.se/venv/Scripts/python.exe" "$DIR/se.py" "$@"
+else
+    exec python "$DIR/se.py" "$@"
+fi
