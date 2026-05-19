@@ -7,7 +7,7 @@ Everything のコマンドライン版。NTFSインデックスで瞬時検索�
 ```bash
 es ねむそう                    # 名前で検索
 es *.webp                       # 拡張子で検索
-es -path "$HOME\Desktop" *.jpg               # パス指定
+es -path "C:\Users\class\Desktop" *.jpg  # パス指定
 es -regex "ねむそう\d*"         # 正規表現
 es -s                           # ソート順変更
 es -n 20                        # 結果数制限
