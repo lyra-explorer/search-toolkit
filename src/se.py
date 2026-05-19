@@ -158,28 +158,32 @@ def setup_local_venv() -> None:
     import venv as venv_mod
 
     print(f"Creating venv → {VENV_DIR}")
-    venv_mod.create(str(VENV_DIR), with_pip=True, clear=True)
+    try:
+        venv_mod.create(str(VENV_DIR), with_pip=True, clear=True)
 
-    # Determine pip path (Windows: Scripts/pip, Unix: bin/pip)
-    if os.name == "nt":
-        pip_path = VENV_DIR / "Scripts" / "pip.exe"
-        python_path = VENV_DIR / "Scripts" / "python.exe"
-    else:
-        pip_path = VENV_DIR / "bin" / "pip"
-        python_path = VENV_DIR / "bin" / "python"
+        # Determine pip path (Windows: Scripts/pip, Unix: bin/pip)
+        if os.name == "nt":
+            pip_path = VENV_DIR / "Scripts" / "pip.exe"
+            python_path = VENV_DIR / "Scripts" / "python.exe"
+        else:
+            pip_path = VENV_DIR / "bin" / "pip"
+            python_path = VENV_DIR / "bin" / "python"
 
-    if not pip_path.exists():
-        print(f"pip not found at {pip_path}", file=sys.stderr)
-        sys.exit(1)
+        if not pip_path.exists():
+            raise RuntimeError(f"pip not found at {pip_path}")
 
-    print("Installing dependencies into venv...")
-    r = subprocess.run(
-        [str(python_path), "-m", "pip", "install", "--quiet",
-         "pymigemo", "PyYAML", "psutil"],
-        capture_output=True, text=True, timeout=120)
-    if r.returncode != 0:
-        print(f"pip install failed: {r.stderr}", file=sys.stderr)
-        sys.exit(1)
+        print("Installing dependencies into venv...")
+        r = subprocess.run(
+            [str(python_path), "-m", "pip", "install", "--quiet",
+             "pymigemo", "PyYAML", "psutil"],
+            capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            raise RuntimeError(f"pip install failed: {r.stderr}")
+    except Exception:
+        # Remove broken venv so wrapper doesn't use it
+        shutil.rmtree(VENV_DIR, ignore_errors=True)
+        print("Failed to set up venv. Cleaned up .se/venv/.", file=sys.stderr)
+        raise
 
     print(f"venv ready → {python_path}")
 
@@ -1162,6 +1166,9 @@ def main():
     parser.add_argument("--json", action="store_true", help="JSON output (for --check)")
 
     args = parser.parse_args()
+
+    if args.venv and not args.init:
+        parser.error("--venv can only be used with --init")
 
     if args.init:
         cmd_init(args)
