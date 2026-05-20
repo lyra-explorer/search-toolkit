@@ -1056,12 +1056,18 @@ def cmd_search(args) -> None:
 
     raw_query = " ".join(args.query)
     caller = effective_caller
-    allowed_roots = get_allowed_roots(caller)
+    try:
+        allowed_roots = get_allowed_roots(caller)
 
-    # Determine search paths
-    search_paths: list[str] | None = None
+        # Determine search paths
+        search_paths: list[str] | None = None
+        if args.scope:
+            scope_paths = get_scope_paths(args.scope)
+    except Exception as e:
+        print(f"se: config parse error: {e}", file=sys.stderr)
+        sys.exit(2)
+
     if args.scope:
-        scope_paths = get_scope_paths(args.scope)
         if scope_paths:
             search_paths = enforce_allowed(scope_paths, allowed_roots)
             if not search_paths:
