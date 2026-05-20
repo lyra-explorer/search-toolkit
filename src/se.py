@@ -1055,6 +1055,7 @@ def cmd_search(args) -> None:
             sys.exit(1)
 
     # Build regex
+    migemo_fallback = False
     if args.literal:
         regex = raw_query
     else:
@@ -1067,6 +1068,7 @@ def cmd_search(args) -> None:
             except Exception as ex:
                 print(f"migemo error: {ex}", file=sys.stderr)
                 regex = raw_query
+                migemo_fallback = True
 
     if args.expand_only:
         print(regex)
@@ -1098,7 +1100,8 @@ def cmd_search(args) -> None:
     # --- Stats to stderr ---
     if args.stats or agent_mode:
         partial_flag = " partial=True" if timed_out and results else ""
-        print(f"[se] elapsed={elapsed:.3f}s results={len(results)} max={args.max} timed_out={timed_out} caller={caller}{partial_flag}", file=sys.stderr)
+        migemo_flag = " migemo_fallback=True" if migemo_fallback else ""
+        print(f"[se] elapsed={elapsed:.3f}s results={len(results)} max={args.max} timed_out={timed_out} caller={caller}{partial_flag}{migemo_flag}", file=sys.stderr)
 
     # Output
     if results:
@@ -1122,6 +1125,7 @@ def cmd_search(args) -> None:
             "path": args.path,
             "result_count": len(results),
             "timed_out": timed_out,
+            "migemo_fallback": migemo_fallback,
             "elapsed_s": round(elapsed, 3),
             "results": results[:50],
         })
