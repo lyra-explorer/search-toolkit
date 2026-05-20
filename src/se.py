@@ -669,10 +669,7 @@ def cmd_doctor(args) -> None:
                 diag = _diagnose_log_entry(entry)
                 if diag:
                     issues.append(diag)
-                    # 自動修正を試みる
-                    fix = _attempt_fix(diag)
-                    if fix:
-                        fixes.append(fix)
+                    # fix is deferred to the auto-fix pass below
 
     # --- 3. ログ書き込みテスト ---
     log_ok = _test_log_write()
@@ -694,6 +691,14 @@ def cmd_doctor(args) -> None:
     # --- 4. 出力 ---
     print("== se --doctor ==")
     print()
+
+    # --- 2.5 Auto-fix pass (separate from observation) ---
+    for issue in issues:
+        fix_name = issue.get("_fix_name") or issue.get("_name")
+        if fix_name:
+            fix_r = _attempt_fix({"_name": fix_name})
+            if fix_r:
+                fixes.append(fix_r)
 
     if not issues and not warnings:
         print("All checks passed. No issues found.")
@@ -742,7 +747,7 @@ def cmd_doctor(args) -> None:
 
 
 def _check(name: str, fn, error_msg: str | None, target: list, fix_name: str | None = None) -> None:
-    """Run a check and append result to target list."""
+    """Run a check and append result to target list. Observation only — no fix."""
     try:
         ok = fn()
     except Exception as e:
@@ -753,9 +758,7 @@ def _check(name: str, fn, error_msg: str | None, target: list, fix_name: str | N
             entry["message"] = error_msg
         if fix_name and fix_name in KNOWN_ERRORS:
             entry["hint"] = KNOWN_ERRORS[fix_name]["hint"]
-            fix_result = _attempt_fix({"_name": fix_name})
-            if fix_result:
-                entry["_fix_result"] = fix_result
+            entry["_fix_name"] = fix_name
         target.append(entry)
 
 
