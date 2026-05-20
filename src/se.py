@@ -1033,8 +1033,12 @@ def cmd_search(args) -> None:
     ensure_init()
 
     # --- Effective caller / mode ---
-    effective_caller = args.caller or detect_caller()
-    agent_mode = (effective_caller == "codex") or args.no_interactive
+    if args.human:
+        effective_caller = None
+        agent_mode = False
+    else:
+        effective_caller = args.caller or detect_caller()
+        agent_mode = (effective_caller == "codex") or args.no_interactive
 
     if agent_mode:
         args.no_interactive = True
@@ -1183,6 +1187,7 @@ def main():
     parser.add_argument("--log", action="store_true", help="Log search to .se/log.jsonl")
     parser.add_argument("--caller", choices=["codex", "pi", "human"], help="Execution caller profile")
     parser.add_argument("--no-interactive", action="store_true", help="Disable interactive features (fzf)")
+    parser.add_argument("--human", action="store_true", help="Unrestricted search (bypass caller limits)")
     parser.add_argument("--max-seconds", type=_positive_float, help="Global search timeout in seconds")
     parser.add_argument("--stats", action="store_true", help="Print elapsed time and result count to stderr")
     parser.add_argument("--check", action="store_true", help="Read-only health check (no auto-fix)")
