@@ -1127,7 +1127,22 @@ def cmd_search(args) -> None:
         print(f"[se] elapsed={elapsed:.3f}s results={len(results)} max={args.max} timed_out={timed_out} caller={caller}{partial_flag}{migemo_flag}", file=sys.stderr)
 
     # Output
-    if results:
+    if args.json:
+        out = {
+            "results": results,
+            "count": len(results),
+            "query": raw_query,
+            "regex": regex if not args.literal else None,
+            "elapsed_s": round(elapsed, 3),
+            "timed_out": timed_out,
+            "migemo_fallback": migemo_fallback,
+        }
+        if args.scope:
+            out["scope"] = args.scope
+        if args.path:
+            out["path"] = args.path
+        print(json.dumps(out, ensure_ascii=False, indent=2))
+    elif results:
         if args.fzf:
             for s in fzf_select(results):
                 print(s)
@@ -1191,7 +1206,7 @@ def main():
     parser.add_argument("--max-seconds", type=_positive_float, help="Global search timeout in seconds")
     parser.add_argument("--stats", action="store_true", help="Print elapsed time and result count to stderr")
     parser.add_argument("--check", action="store_true", help="Read-only health check (no auto-fix)")
-    parser.add_argument("--json", action="store_true", help="JSON output (for --check)")
+    parser.add_argument("--json", action="store_true", help="JSON output (for --check and search results)")
 
     args = parser.parse_args()
 
