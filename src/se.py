@@ -68,6 +68,32 @@ AGENT_DEFS = {
     },
 }
 
+
+from dataclasses import dataclass, field
+
+@dataclass
+class Outcome:
+    """Structured result for agent-safe IPC."""
+    ok: bool
+    data: dict = field(default_factory=dict)
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "ok": self.ok,
+            "data": self.data,
+            "errors": self.errors,
+            "warnings": self.warnings,
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), ensure_ascii=False)
+
+    @property
+    def exit_code(self) -> int:
+        return 0 if self.ok and not self.errors else 1
+
 # ユーザー定義エージェント（~/.serc の extra_agents で追加可能）
 EXTRA_AGENTS_KEY = "extra_agents"
 
@@ -950,7 +976,7 @@ def _fix_config_corrupt() -> str | None:
     return None
 
 
-def cmd_check(args) -> None:
+def cmd_check(args) -> Outcome:
     """Read-only health check — no auto-fix, no service launch, no log append."""
     checks = {}
 
@@ -991,6 +1017,12 @@ def cmd_check(args) -> None:
 
     all_ok = all(c["ok"] for c in checks.values())
 
+    outcome = Outcome(
+        ok=all_ok,
+        data={"checks": checks},
+        errors=[f"{k}: {v.get('error', 'fail')}" for k, v in checks.items() if not v["ok"]],
+    )
+
     if args.json:
         print(json.dumps({"ok": all_ok, "checks": checks}, indent=2))
     else:
@@ -1003,7 +1035,7 @@ def cmd_check(args) -> None:
                 line += f" — {info['error']}"
             print(line)
 
-    sys.exit(0 if all_ok else 1)
+    return outcome
 
 
 def _fix_scope_not_found() -> str | None:
@@ -1202,8 +1234,8 @@ def main():
         return
 
     if args.check:
-        cmd_check(args)
-        return
+        outcome = cmd_check(args)
+        sys.exit(outcome.exit_code)
 
     if not args.query:
         parser.print_help()
