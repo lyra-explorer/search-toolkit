@@ -1078,18 +1078,17 @@ def cmd_search(args) -> None:
     migemo_fallback = False
     if args.literal:
         regex = raw_query
-    else:
-        has_jp = any("\u3040" <= c <= "\u9FFF" or "\uFF66" <= c <= "\uFF9F" for c in raw_query)
-        if has_jp:
+    elif all(ord(c) < 128 for c in raw_query):
+        # migemo only makes sense for ASCII (romaji) input
+        try:
+            regex = migemo_expand(raw_query)
+        except Exception as ex:
+            print(f"migemo error: {ex}", file=sys.stderr)
             regex = raw_query
-        else:
-            try:
-                regex = migemo_expand(raw_query)
-            except Exception as ex:
-                print(f"migemo error: {ex}", file=sys.stderr)
-                regex = raw_query
-                migemo_fallback = True
-
+            migemo_fallback = True
+    else:
+        # Non-ASCII (Japanese, CJK, accented latin, etc.) — pass through directly
+        regex = raw_query
     if args.expand_only:
         print(regex)
         return
