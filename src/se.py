@@ -68,12 +68,30 @@ AGENT_DEFS = {
     },
 }
 
+# ユーザー定義エージェント（~/.serc の extra_agents で追加可能）
+EXTRA_AGENTS_KEY = "extra_agents"
+
 # デフォルト値（~/.serc で上書き可能）
 DEFAULTS = {
     "es_path": r"C:\Program Files\Everything\es.exe",
     "search_root": None,  # None = プロジェクトディレクトリ
     "caller_pi_allowed": ["C:\\"],
 }
+
+
+def get_agent_defs() -> dict:
+    """Return built-in AGENT_DEFS merged with user-defined extra_agents from ~/.serc."""
+    agents = dict(AGENT_DEFS)
+    profile = load_profile()
+    extras = profile.get(EXTRA_AGENTS_KEY)
+    if isinstance(extras, dict):
+        for name, defn in extras.items():
+            if isinstance(defn, dict) and "session_root" in defn and "pattern" in defn:
+                agents[name] = {
+                    "session_root": os.path.expanduser(defn["session_root"]),
+                    "pattern": defn["pattern"],
+                }
+    return agents
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +223,7 @@ def cmd_init(args) -> None:
     # エージェント検出
     found_agents = {}
     found_session_roots = []
-    for name, defn in AGENT_DEFS.items():
+    for name, defn in get_agent_defs().items():
         root = os.path.normpath(defn["session_root"])
         if root == ".":
             # プロジェクトルート基準 → .aider.chat.history.md があるか
