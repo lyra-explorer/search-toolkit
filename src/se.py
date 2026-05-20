@@ -317,6 +317,12 @@ def cmd_init(args) -> None:
             'caller_codex_allowed:',
             '  - "C:\\\\"',
             '  - "D:\\\\data\\\\CodexApp"',
+            "",
+            "# 追加エージェント定義（必要ならコメントを外して編集）",
+            "# extra_agents:",
+            "#   myagent:",
+            '#     session_root: "D:\\\\data\\\\MyAgent"',
+            '#     pattern: "*.jsonl"',
         ]
         PROFILE_PATH.write_text("\n".join(profile_lines) + "\n", encoding="utf-8")
         print(f"Profile template → {PROFILE_PATH}")
