@@ -74,7 +74,7 @@ EXTRA_AGENTS_KEY = "extra_agents"
 # デフォルト値（~/.serc で上書き可能）
 DEFAULTS = {
     "es_path": r"C:\Program Files\Everything\es.exe",
-    "search_root": None,  # None = プロジェクトディレクトリ
+    "search_root": "C:\\",  # Default to entire C: drive
     "caller_pi_allowed": ["C:\\"],
 }
 
@@ -153,7 +153,7 @@ def get_default_search_root() -> str:
     p = load_profile()
     root = p.get("search_root", DEFAULTS["search_root"])
     if not root:
-        root = str(PROJECT_DIR)
+        root = os.path.expanduser("~")
     return root
 
 
@@ -306,8 +306,8 @@ def cmd_init(args) -> None:
             "# Everything CLI",
             f'es_path: "{_yaml_esc(DEFAULTS["es_path"])}"',
             "",
-            "# デフォルト検索ルート（未指定ならプロジェクトディレクトリ）",
-            f'# search_root: "{_yaml_esc(str(PROJECT_DIR))}"',
+            "# デフォルト検索ルート",
+            f'search_root: "{_yaml_esc(DEFAULTS["search_root"])}"',
             "",
             "# pi がアクセスできるルート（制限なしの場合は空）",
             'caller_pi_allowed:',
