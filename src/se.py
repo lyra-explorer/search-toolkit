@@ -1040,12 +1040,26 @@ def cmd_search(args) -> None:
         effective_caller = args.caller or detect_caller()
         agent_mode = (effective_caller == "codex") or args.no_interactive
 
-    if agent_mode:
-        args.no_interactive = True
-        if args.max is None:
+    # --- Load all config-dependent values up-front, fail-closed on parse errors ---
+    caller = effective_caller
+    try:
+        if agent_mode and args.max is None:
             config = load_config()
             default_max = config.get("defaults", {}).get("max_results", 100) if config else 100
             args.max = default_max
+
+        allowed_roots = get_allowed_roots(caller)
+
+        search_paths: list[str] | None = None
+        scope_paths: list[str] | None = None
+        if args.scope:
+            scope_paths = get_scope_paths(args.scope)
+    except Exception as e:
+        print(f"se: config parse error: {e}", file=sys.stderr)
+        sys.exit(2)
+
+    if agent_mode:
+        args.no_interactive = True
         if args.max_seconds is None:
             args.max_seconds = 5.0
 
@@ -1055,17 +1069,6 @@ def cmd_search(args) -> None:
         sys.exit(2)
 
     raw_query = " ".join(args.query)
-    caller = effective_caller
-    try:
-        allowed_roots = get_allowed_roots(caller)
-
-        # Determine search paths
-        search_paths: list[str] | None = None
-        if args.scope:
-            scope_paths = get_scope_paths(args.scope)
-    except Exception as e:
-        print(f"se: config parse error: {e}", file=sys.stderr)
-        sys.exit(2)
 
     if args.scope:
         if scope_paths:
