@@ -445,18 +445,24 @@ def get_allowed_roots(caller: str | None) -> list[str] | None:
     return roots if roots else None
 
 
+def _is_under_root(path: str, root: str) -> bool:
+    r"""Check whether *path* lives under *root* (case-insensitive, Windows-aware).
+
+    Uses os.path.commonpath to avoid false positives:
+    e.g. root=dir1 should NOT match dir12.
+    """
+    p = os.path.normcase(os.path.normpath(path))
+    r = os.path.normcase(os.path.normpath(root))
+    try:
+        return os.path.commonpath([p, r]) == r
+    except ValueError:
+        # Different drives on Windows
+        return False
+
 def enforce_allowed(paths: list[str], allowed_roots: list[str] | None) -> list[str]:
     if not allowed_roots:
         return paths
-    filtered = []
-    for p in paths:
-        for root in allowed_roots:
-            p_norm = os.path.normpath(p).lower()
-            root_norm = os.path.normpath(root).lower().rstrip("\\")
-            if p_norm.startswith(root_norm):
-                filtered.append(p)
-                break
-    return filtered
+    return [p for p in paths if any(_is_under_root(p, r) for r in allowed_roots)]
 
 
 # ---------------------------------------------------------------------------
@@ -549,14 +555,7 @@ def es_search_multi_path(regex: str, paths: list[str], n: int | None, deadline: 
 def filter_results(results: list[str], allowed_roots: list[str] | None) -> list[str]:
     if not allowed_roots:
         return results
-    filtered = []
-    for r in results:
-        r_norm = os.path.normpath(r).lower()
-        for root in allowed_roots:
-            if r_norm.startswith(os.path.normpath(root).lower().rstrip("\\")):
-                filtered.append(r)
-                break
-    return filtered
+    return [r for r in results if any(_is_under_root(r, root) for root in allowed_roots)]
 
 
 # ---------------------------------------------------------------------------
