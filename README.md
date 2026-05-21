@@ -99,6 +99,20 @@ se -p "D:\data" query    # パス限定
 se -f query              # fzf でインタラクティブ選択（bat プレビュー付き）
 ```
 
+### Backend selection
+
+Windows の既定動作は従来どおり Everything / `es.exe` です。
+Linux/POSIX 系では自動判定せず、明示的に backend を指定します。
+
+```bash
+se query                       # Windows: Everything / es.exe
+se --backend everything query  # explicit Windows backend
+se --backend fd query          # fd filename/path search
+se --backend rg-files query    # rg --files + Python regex filter
+```
+
+`plocate` / `arch-linux` backend と自動 fallback は #56 の後続 PR で扱います。
+
 ### スコープ検索
 
 ```powershell
@@ -165,7 +179,7 @@ Timeout は crash ではなく expected failure。`--log` 指定時は `timed_ou
 | `--init` | `.se/` と `~/.serc` を生成 |
 | `--doctor` | 環境診断・自動修正・警告 |
 | `--check` | 読み取り専用ヘルスチェック |
-| `--json` | `--check` の結果を JSON 出力（通常検索結果の JSON 化ではない） |
+| `--json` | `--check` または通常検索結果を JSON 出力 |
 | `-p PATH` | 検索パスを限定 |
 | `-n NUM` | 最大結果数 |
 | `-f` | fzf でインタラクティブ絞り込み |
@@ -176,7 +190,8 @@ Timeout は crash ではなく expected failure。`--log` 指定時は `timed_ou
 | `--caller {codex,pi,human}` | 実行プロファイル指定 |
 | `--no-interactive` | fzf 禁止 |
 | `--max-seconds N` | グローバル検索タイムアウト（N > 0） |
-| `--stats` | elapsed / results / timed_out を stderr に出力 |
+| `--stats` | backend / elapsed / results / timed_out を stderr に出力 |
+| `--backend {everything,fd,rg-files}` | 検索 backend を明示指定 |
 
 ## Configuration
 

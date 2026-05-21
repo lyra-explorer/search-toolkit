@@ -41,6 +41,10 @@ exits with `124`.
 
 Backend work should keep the current Windows behavior as the baseline.
 
+For `--backend` changes, include a Compatibility Notes section in the PR body
+that states what changed for `--stats`, `--log`, JSON output, exit codes, and
+the Windows default path. If a field is added, call it out explicitly.
+
 Expected boundary:
 
 - `se query` on Windows continues to use Everything / `es.exe`.

@@ -14,6 +14,10 @@
 
 Complete this section if the PR changes backend selection or search execution.
 
+### Compatibility Notes
+
+<!-- State what changed for --stats, --log, JSON output, exit codes, and Windows default behavior. -->
+
 - [ ] `--backend` behavior is explicit opt-in.
 - [ ] Linux/POSIX backend warnings or fallbacks do not affect Windows default search.
 - [ ] `-p/--path`, `--scope`, `-n/--max`, `--max-seconds`, `--stats`, `--log`, and `--caller codex --no-interactive` still work through the changed path.
