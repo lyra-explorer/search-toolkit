@@ -16,8 +16,10 @@ Usage:
 
 import argparse
 import json
+import ntpath
 import os
 import platform
+import posixpath
 import re
 import subprocess
 import sys
@@ -470,16 +472,26 @@ def get_allowed_roots(caller: str | None) -> list[str] | None:
     return roots if roots else None
 
 
+_WINDOWS_DRIVE_RE = re.compile(r"^[a-zA-Z]:")
+
+
+def _is_windows_like_path(s: str) -> bool:
+    return bool(_WINDOWS_DRIVE_RE.match(s)) or "\\" in s
+
+
 def _is_under_root(path: str, root: str) -> bool:
     r"""Check whether *path* lives under *root* (case-insensitive, Windows-aware).
 
-    Uses os.path.commonpath to avoid false positives:
-    e.g. root=dir1 should NOT match dir12.
+    Selects ntpath or posixpath semantics from the input path shape so the
+    comparison works correctly regardless of the host OS.
     """
-    p = os.path.normcase(os.path.normpath(path))
-    r = os.path.normcase(os.path.normpath(root))
+    pathmod = ntpath if (
+        _is_windows_like_path(path) or _is_windows_like_path(root)
+    ) else posixpath
     try:
-        return os.path.commonpath([p, r]) == r
+        p = pathmod.normcase(pathmod.normpath(path))
+        r = pathmod.normcase(pathmod.normpath(root))
+        return pathmod.commonpath([p, r]) == r
     except ValueError:
         # Different drives on Windows
         return False
