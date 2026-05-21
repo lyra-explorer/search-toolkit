@@ -17,6 +17,7 @@ Usage:
 import argparse
 import json
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -540,6 +541,10 @@ class SearchTimeout(Exception):
         self.partial = partial or []
 
 
+class BackendConfigError(Exception):
+    """Raised when a selected backend cannot be used in the current environment."""
+
+
 def es_search(regex: str, path: str | None, n: int | None, timeout: float | None = None) -> list[str]:
     es = get_es_path()
     cmd = [es, "-r", regex]
@@ -574,6 +579,122 @@ def es_search_multi_path(regex: str, paths: list[str], n: int | None, deadline: 
             if remaining <= 0:
                 break
     return all_results
+
+
+def resolve_backend(requested: str | None) -> str:
+    """Resolve and validate the search backend for this process."""
+    system = platform.system()
+    if requested is None:
+        if system == "Windows":
+            return "everything"
+        raise BackendConfigError(
+            "se: non-Windows platforms require --backend fd or --backend rg-files"
+        )
+    if requested == "everything" and system != "Windows":
+        raise BackendConfigError("se: backend 'everything' is Windows-only")
+    return requested
+
+
+def _backend_invoke(argv: list[str], timeout: float | None) -> tuple[str, int, str]:
+    """Invoke a backend command and return stdout, returncode, stderr."""
+    try:
+        result = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        raise SearchTimeout(f"backend timed out ({timeout}s)")
+    return result.stdout, result.returncode, result.stderr
+
+
+def _remaining_timeout(deadline: float | None) -> float | None:
+    if deadline is None:
+        return None
+    left = deadline - time.monotonic()
+    if left <= 0:
+        raise SearchTimeout("global search budget exceeded")
+    return left
+
+
+def _backend_paths(path: str | None, search_paths: list[str] | None) -> list[str] | None:
+    if search_paths:
+        return search_paths
+    if path:
+        return [path]
+    return None
+
+
+def _limit_results(results: list[str], n: int | None) -> list[str]:
+    return results[:n] if n is not None else results
+
+
+def _search_fd(regex: str, paths: list[str] | None, n: int | None, deadline: float | None) -> list[str]:
+    fd = shutil.which("fd")
+    if not fd:
+        raise BackendConfigError("se: backend 'fd' requires fd in PATH")
+    cmd = [fd, "--color", "never", "--absolute-path", "--full-path"]
+    if n is not None:
+        cmd += ["--max-results", str(n)]
+    cmd.append(regex)
+    if paths:
+        cmd.extend(paths)
+    stdout, rc, stderr = _backend_invoke(cmd, _remaining_timeout(deadline))
+    if rc != 0 and stderr:
+        print(f"fd error: {stderr.strip()}", file=sys.stderr)
+        sys.exit(1)
+    return _limit_results([l for l in stdout.splitlines() if l.strip()], n)
+
+
+def _search_rg_files(regex: str, paths: list[str] | None, n: int | None, deadline: float | None) -> list[str]:
+    rg = shutil.which("rg")
+    if not rg:
+        raise BackendConfigError("se: backend 'rg-files' requires rg in PATH")
+    cmd = [rg, "--files", "--color", "never"]
+    if paths:
+        cmd.extend(paths)
+    stdout, rc, stderr = _backend_invoke(cmd, _remaining_timeout(deadline))
+    if rc != 0 and stderr:
+        print(f"rg-files error: {stderr.strip()}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        pattern = re.compile(regex)
+    except re.error as e:
+        raise BackendConfigError(f"se: invalid regex for rg-files backend: {e}")
+    results: list[str] = []
+    cwd = os.getcwd()
+    for line in stdout.splitlines():
+        if not line.strip():
+            continue
+        candidate = line if os.path.isabs(line) else os.path.abspath(os.path.join(cwd, line))
+        if pattern.search(candidate):
+            results.append(candidate)
+            if n is not None and len(results) >= n:
+                break
+    return results
+
+
+def backend_search(
+    backend: str,
+    regex: str,
+    path: str | None,
+    search_paths: list[str] | None,
+    n: int | None,
+    deadline: float | None,
+) -> list[str]:
+    if backend == "everything":
+        if search_paths:
+            return es_search_multi_path(regex, search_paths, n, deadline=deadline)
+        timeout = (deadline - time.monotonic()) if deadline else None
+        return es_search(regex, path, n, timeout=timeout)
+    paths = _backend_paths(path, search_paths)
+    if backend == "fd":
+        return _search_fd(regex, paths, n, deadline)
+    if backend == "rg-files":
+        return _search_rg_files(regex, paths, n, deadline)
+    raise BackendConfigError(f"se: unknown backend: {backend}")
 
 
 def filter_results(results: list[str], allowed_roots: list[str] | None) -> list[str]:
@@ -1074,6 +1195,12 @@ def cmd_search(args) -> None:
         print("se: -f/--fzf is disabled in non-interactive mode", file=sys.stderr)
         sys.exit(2)
 
+    try:
+        backend = resolve_backend(args.backend)
+    except BackendConfigError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(2)
+
     raw_query = " ".join(args.query)
 
     if args.scope:
@@ -1118,11 +1245,10 @@ def cmd_search(args) -> None:
     start = time.perf_counter()
 
     try:
-        if search_paths:
-            results = es_search_multi_path(regex, search_paths, args.max, deadline=deadline)
-        else:
-            timeout = (deadline - time.monotonic()) if deadline else None
-            results = es_search(regex, args.path, args.max, timeout=timeout)
+        results = backend_search(backend, regex, args.path, search_paths, args.max, deadline)
+    except BackendConfigError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(2)
     except SearchTimeout as e:
         results = e.partial
         timed_out = True
@@ -1139,7 +1265,7 @@ def cmd_search(args) -> None:
     if args.stats or agent_mode:
         partial_flag = " partial=True" if timed_out and results else ""
         migemo_flag = " migemo_fallback=True" if migemo_fallback else ""
-        print(f"[se] elapsed={elapsed:.3f}s results={len(results)} max={args.max} timed_out={timed_out} caller={caller}{partial_flag}{migemo_flag}", file=sys.stderr)
+        print(f"[se] backend={backend} elapsed={elapsed:.3f}s results={len(results)} max={args.max} timed_out={timed_out} caller={caller}{partial_flag}{migemo_flag}", file=sys.stderr)
 
     # Output
     if args.json:
@@ -1151,6 +1277,7 @@ def cmd_search(args) -> None:
             "elapsed_s": round(elapsed, 3),
             "timed_out": timed_out,
             "migemo_fallback": migemo_fallback,
+            "backend": backend,
         }
         if args.scope:
             out["scope"] = args.scope
@@ -1179,6 +1306,7 @@ def cmd_search(args) -> None:
             "result_count": len(results),
             "timed_out": timed_out,
             "migemo_fallback": migemo_fallback,
+            "backend": backend,
             "elapsed_s": round(elapsed, 3),
             "results": results[:50],
         })
@@ -1222,6 +1350,15 @@ def main():
     parser.add_argument("--stats", action="store_true", help="Print elapsed time and result count to stderr")
     parser.add_argument("--check", action="store_true", help="Read-only health check (no auto-fix)")
     parser.add_argument("--json", action="store_true", help="JSON output (for --check and search results)")
+    parser.add_argument(
+        "--backend",
+        choices=["everything", "fd", "rg-files"],
+        default=None,
+        help=(
+            "Search backend (default: everything on Windows). "
+            "Non-Windows platforms must specify --backend explicitly."
+        ),
+    )
 
     args = parser.parse_args()
 
