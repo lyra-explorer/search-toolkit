@@ -1,0 +1,59 @@
+name: Bug report
+description: Report a reproducible problem in se.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong?
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      description: Paste the command that reproduces the issue. Redact local paths if needed.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include exit code, stderr, and stats if available. Redact sensitive paths.
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - Windows / Everything
+        - Codex or other non-interactive agent
+        - Linux / fd
+        - Linux / plocate
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: health
+    attributes:
+      label: Health check
+      description: Paste relevant output from se --check or se --check --json. Redact local paths.
+      render: text
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety notes
+      options:
+        - label: I reviewed the output for sensitive local paths before posting.
+          required: true
+

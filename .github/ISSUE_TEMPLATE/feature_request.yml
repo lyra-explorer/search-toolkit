@@ -1,0 +1,38 @@
+name: Feature request
+description: Propose a new capability or behavior change.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow should this improve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Describe the desired behavior and CLI shape if relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: windows
+    attributes:
+      label: Windows default impact (required)
+      description: Explain whether this changes `se query` on Windows. If it should not, say so explicitly.
+    validations:
+      required: true
+  - type: textarea
+    id: agent_safety
+    attributes:
+      label: Agent-safe behavior (required)
+      description: Note expected effects on path limits, result limits, timeout, stats, logging, and non-interactive mode. If none, say "no impact" explicitly.
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+      description: What should this issue avoid changing?

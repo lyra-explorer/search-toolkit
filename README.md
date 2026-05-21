@@ -301,6 +301,10 @@ Codex `auto_review` sandbox では Everything IPC に接続できず `Error 8: E
 
 詳細: [docs/codex-sandbox-ipc.md](docs/codex-sandbox-ipc.md) · [#11](https://github.com/na-navi/search-toolkit/issues/11)
 
+## Contributing
+
+Windows / Everything の既存経路を baseline として保護しながら変更してください。開発・PR 前の確認事項は [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください。
+
 ## License
 
 [MIT](LICENSE)
